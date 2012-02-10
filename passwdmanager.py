@@ -1,0 +1,455 @@
+#! /usr/bin/python3
+
+# passwdmanager.py --- 
+# 
+# Filename: passwdmanager.py
+# Description: Generate, keep, prompt to update password
+# Author: lxd
+# Maintainer: 
+# Created: Wed Feb  1 15:46:06 2012 (+0800)
+# Version: 1.0
+# Last-Updated: 
+#           By: 
+#     Update #: 0
+# URL: 
+# Keywords: 
+# Compatibility: Python 3.1
+# 
+#
+
+# Depends: PyCrypto-2.5
+# 
+
+
+# Commentary: 
+# 
+# 
+# 
+# 
+
+# Change Log:
+# 
+# 
+# 
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 3, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; see the file COPYING.  If not, write to
+# the Free Software Foundation, Inc., 51 Franklin Street, Fifth
+# Floor, Boston, MA 02110-1301, USA.
+# 
+# 
+
+# Code:
+
+import sys
+import os
+import platform
+import time
+import math
+import getpass
+import binascii
+import subprocess
+import Crypto
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+
+PROGRAM="PasswdManager"
+VERSION=1.0
+PYTHON_VERSION=sys.version[:5]
+CRYPTO_VERSION=Crypto.__version__
+LICENSE="""
+License under GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law."""
+AUTHOR="lxd <i@lxd.me>. Input \'?\' for help"
+
+CIPHERTEXT_WIDTH=68
+START_OF_CIPHERTEXT="# START OF CIPHERTEXT"
+END_OF_CIPHERTEXT="# END OF CIPHERTEXT"
+
+PS=" >>"
+ENTRANCE_PROMPT="Input main password"
+
+outter_inputs = { '?' : ['Print this', lambda:print_help(outter_inputs)],
+                  'q' : ['Exit this script', lambda:die()],
+                  'n' : ['Creat new entry', lambda:creat_new_entry()],
+                  'm' : ['Operate on main passwd', lambda:innner_loop('m')]
+                  }
+
+
+# Data structure
+
+LISTS = [[] for x in range(9)]
+LOG_LEN = 5
+logged_user_host = LISTS[0]
+logged_timestamp = LISTS[1]
+passwd_altered = LISTS[2]
+
+HISTORY_LEN = 4
+main_passwd = LISTS[3]
+updated_timestamp = LISTS[4]
+entry_name = LISTS[5]
+entry_username = LISTS[6]
+entry_passwd = LISTS[7]
+entry_updated_timestamp = LISTS[8]
+
+
+
+def print_lists():
+    print(LISTS)
+
+
+def update_logs():
+    if len(logged_user_host) >= LOG_LEN:    
+        logged_user_host.pop(0)
+        logged_timestamp.pop(0)
+        passwd_altered.pop(0)
+    
+    logged_user_host.append('{0}@{1}'.
+                            format(getpass.getuser(), platform.node()))
+    logged_timestamp.append(math.trunc(time.time()))
+    passwd_altered.append(False)
+
+def set_to_altered():
+    passwd_altered[len(passwd_altered)-1] = True
+
+def update_main_passwd(p):
+    if len(main_passwd) >= HISTORY_LEN:
+        main_passwd.pop(0)
+        updated_timestamp.pop(0)
+    main_passwd.append(p)
+    updated_timestamp.append(math.trunc(time.time()))
+
+def die(c=0):
+    print('\nBye~')
+    sys.exit(c)
+    
+def txt_parenthesized(t):
+    if len(t) == 0:
+        return False
+    return t[0] == '(' and t[-1] == ')'
+
+def type_convertible(s, t):
+    try:
+        i = t(s)
+    except ValueError as ex:
+        return False
+    else:
+        return i
+
+def int_convertible(s):
+    type_convertible(s, int)
+
+def literal_bool_convertible(s):
+    return s == 'True' or s == 'False'
+
+def literal_bool(s):
+    assert literal_bool_convertible(s)
+    if s == 'True':
+        return True
+    else:
+        return False
+
+def split_by_level1(s, sep):
+    """Split string by sep but escape sep within parenthesis"""
+    stack = []
+    l = []
+    e = ''
+    skip = False
+    
+    for c in s:
+        if c == sep and not skip:
+            l.append(e)
+            e = ''
+            continue
+        if c == '(':
+            skip = True
+            stack.append('#')
+        elif c == ')':
+            if len(stack) == 1:
+                skip = False
+            stack.pop()
+        e += c
+
+    if e:
+        l.append(e)
+    return l
+    
+def txt_2_list(t, l):
+    """Convert list-formated string to real list"""
+    if txt_parenthesized(t):
+        t = t[1:-1]
+    assert len(l) == 0
+    
+    l0 = split_by_level1(t, ',')
+    for e in l0:
+        if txt_parenthesized(e):
+            l.append(txt_2_list(e))
+        elif int_convertible(e):
+            l.append(int(e))
+        elif literal_bool_convertible(e):
+            l.append(literal_bool(e))
+        else:
+            l.append(e)
+    return l
+
+def list_2_txt(l):
+    if type(l) is not list:
+        return str(l)
+    else:
+        txt = '('
+        for e in l:
+            txt += list_2_txt(e) + ','
+        return txt + ')' if txt[-1] == '(' else txt[:-1] + ')'
+
+def extract_lists():
+    txt = ''
+    for l in LISTS:
+        txt += list_2_txt(l)
+    return txt
+
+def extract_txt(t):
+    assert len(t) > 1
+    tls = t[1:-1].split(')(')
+
+    for tl, l in zip(tls, LISTS):
+        txt_2_list(tl, l)
+    
+
+def encrypt(txt, k):
+    aes = AES.new(k, AES.MODE_CFB)
+    ct = aes.encrypt(txt.encode())
+    return binascii.b2a_base64(ct).decode()[:-1] # remove trailing `\n'
+
+
+def decrypt(b64s, k):
+    try:
+        ct = binascii.a2b_base64(b64s.encode())
+        aes = AES.new(k, AES.MODE_CFB)
+        txt = aes.decrypt(ct)
+        txts = txt.decode()
+    except UnicodeDecodeError:
+        return False
+    else:
+        return txts
+
+def load_ciphertext():
+    with open(sys.argv[0], 'r') as f:
+        ct = ""
+        In = False
+        for l in f:
+            l = l.rstrip('\n')
+        
+            if l == START_OF_CIPHERTEXT:
+                In = True
+            elif l == END_OF_CIPHERTEXT:
+                break
+            elif In:
+                ct += l.lstrip('#')
+    return ct
+
+def unload_ciphertext(ct):
+    ctlist = [ct[i:i+CIPHERTEXT_WIDTH]
+              for i in range(0, len(ct), CIPHERTEXT_WIDTH)]
+    pre = post = s = ''
+    
+    with open(sys.argv[0], 'r+') as f:
+        for l in f:
+            s += l
+            if l.rstrip('\n') == START_OF_CIPHERTEXT:
+                pre = s
+                s = ''
+            elif l.rstrip('\n') == END_OF_CIPHERTEXT:
+                s = ''
+        post = END_OF_CIPHERTEXT + '\n' + s
+
+    with open(sys.argv[0], 'w') as f:
+        f.write(pre)
+        for l in ctlist:
+            f.write('#' + l + '\n')
+        f.write(post)
+
+def update_ciphertext(p=''):
+    if p != '':
+        if len(main_passwd) == 0:
+            update_main_passwd(p)
+        if len(main_passwd) > 0 and p != main_passwd[-1]:
+            update_main_passwd(p)
+    else:
+        assert len(main_passwd) > 0
+    unload_ciphertext(encrypt(extract_lists(), main_passwd[-1]))
+    
+
+def generate_main_passwd(passwd_txt):
+    obj = SHA256.new()
+    obj.update(passwd_txt.encode())
+    d = obj.digest()
+    return binascii.b2a_base64(d).decode()[:32]
+
+
+def prompt_update_main_passwd():
+    passwd = getpass.getpass("Input new main password >>")
+    passwd1 = getpass.getpass("Again as usual >>")
+    if passwd != passwd1:
+        s = input("\nNot match, press \'c\' to cancel >>")
+        if s == 'c' or s == 'C':
+            return False
+        else:
+            prompt_update_main_passwd()
+    else:
+        return generate_main_passwd(passwd)
+
+def print_help(dic):
+    print('List of possible commands:\n')
+    for x in dic:
+            print(x, dic[x][0], sep='\t')
+            
+    if len(entry_name) > 0:
+        j = len(entry_name) - 1
+        span = '[0'
+        span += '-'+str(j)+']' if j > 0 else ']'
+        print(span, 'Operate on xth entry ', sep='\t')
+        print('d'+span, 'Delete xth entry ', sep='\t')
+
+def print_entries_multilines():
+    # Here is why I like python ...
+    for i, (n, un, ts) in enumerate(zip(entry_name,
+                                        entry_username,
+                                        entry_updated_timestamp)):
+        print(i+'.', n, un, time.ctime(ts[-1]), sep='\n')
+
+def print_entries_singleline():
+    pass
+
+def print_entry_detail():
+    pass
+
+def create_new_entry():
+    
+    pass
+
+def remove_entry(i):
+    pass
+
+def extend_outter_inputs():
+    d = {}
+    for i, name in enumerate(entry_name):
+        d[str(i)] = [name, lambda:innner_loop(i)]
+        d['d'+str(i)] = [name, lambda:remove_entry(i)]
+
+    for x in outter_inputs: # merge
+        d[x] = outter_inputs[x]
+
+    return d
+
+def outter_loop():
+    while True:
+        print_entries_multilines()
+        try:
+            s = input('>>')
+        except (KeyboardInterrupt, EOFError):
+            die()
+        dic = extend_outter_inputs()
+        if s not in dic:
+            print('Ivalid input \'', s , '\' ')
+            continue
+        dic[s][1]() # lambda execute...        
+    pass
+
+def xsel_installed():
+    program = 'xsel'
+    for path in os.environ['PATH'].split(':'):
+        fullpath = os.path.join(path, program)
+        if os.path.exists(fullpath) and not os.path.isdir(fullpath):
+            return True
+    return False
+
+def get_xsel_version():
+    assert xsel_installed()
+    return subprocess.getoutput('xsel --version').split()[2]
+
+def cp2_clipboard(s):
+    if not xsel_installed():
+        print('Copied to clipboard failed, xsel not found.')
+        return None
+    try:
+        p0 = subprocess.Popen('xsel', stdin=subprocess.PIPE)
+        p0.communicate(s)
+        p0 = subprocess.Popen(['xsel', '--clipboard'], stdin=subprocess.PIPE)
+        p1.communicate(s)
+    except OSError:
+        print('Copied to clipboard failed.')
+
+
+def innner_loop(i):
+    if i == 'm':
+        pass
+    else:
+        assert int_convertible(i)
+        pass
+    
+
+def take_off():
+    print("No CipherText found, maybe it's your first time start this "\
+              "script or pretend to do so, anyway create your main pasword")
+    rv = prompt_update_main_passwd() # `rv': return value
+    if not rv:
+        die(1)
+        
+    update_logs()
+    set_to_altered()
+    update_ciphertext(rv)
+
+
+def game_start():
+    ct = load_ciphertext() # `ct': CipherText
+    if not ct:
+        take_off()
+    else:
+        decrypted = False
+        while not decrypted:
+            try:
+                rawpasswd = getpass.getpass(ENTRANCE_PROMPT+PS)
+            except (KeyboardInterrupt, EOFError):
+                die()
+            passwd = generate_main_passwd(rawpasswd)
+            decrypted = decrypt(ct, passwd)
+        extract_txt(decrypted)
+        update_logs()
+        update_ciphertext()
+        
+    outter_loop()
+
+
+
+if __name__ == '__main__':
+    XSEL_VERSION=get_xsel_version() if xsel_installed() else 'not installed'
+    print("\n{0} {1} (Python {2}, Crypto {3}, xsel {4}){5}\nAuthor: {6}\n".
+          format(PROGRAM, VERSION, PYTHON_VERSION, CRYPTO_VERSION,
+                 XSEL_VERSION, LICENSE, AUTHOR))
+    game_start()
+
+
+# Attention! Do not touch following lines, ciphertext lies here
+# START OF CIPHERTEXT
+#UW3lx+6dHcxdWY63nK5GJIfNk9iGuR7CebhCCXbQ5ByTpoFCRBxSb3cGFeVFs2KWH0LT
+#UK5IICiH4HXAZXLun7eVCZUWcNDN/xY8DmqbNmz/9bm9aGxkdsJTPMmrwyPlc0YWdGIo
+#j+kHZOwTQxz86LmRcuHFptdWU1wK8us+Tt4VwGztgLQ1dXPhn643ZVY8yg6DzdAlCkss
+#CxzNV74WULeAfiRgb4QbE78w+bEcFuCy71iYDmThzc5oai6MPfonyy4jNa7nb+LsaAjQ
+#Hokbk/39fVvEqoNz6w==
+# END OF CIPHERTEXT
+
+# 
+# passwdmanager.py ends here
+
+#Password must contain at least one of letters, numbers, and symbols.
