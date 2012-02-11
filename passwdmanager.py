@@ -78,15 +78,6 @@ START_OF_CIPHERTEXT="# START OF CIPHERTEXT"
 END_OF_CIPHERTEXT="# END OF CIPHERTEXT"
 
 
-outter_inputs = { '?' : ['Print this', lambda:print_help(outter_inputs)],
-                  'ex': ['Export unencryted password info in base64', \
-                             lambda:do_export()],
-                  'q' : ['Exit this script', lambda:die()],
-                  'n' : ['Creat new entry', lambda:create_new_entry()],
-                  'u' : ['Update main passwd', \
-                             lambda:prompt_update_main_passwd()]
-                  }
-
 
 # Data structure
 
@@ -433,18 +424,6 @@ def remove_entry(i):
         print('Abort')
         return False
 
-def extend_outter_inputs():
-    d = {}
-    for i, name in enumerate(entry_name):
-        d[str(i)] = ['Operate on entry \''+name+'\'', lambda:innner_loop(i)]
-        d['d'+str(i)] = ['Remove entry \''+name+'\'', lambda:remove_entry(i)]
-
-    for x in outter_inputs: # merge
-        d[x] = outter_inputs[x]
-    
-    d['?'][1] = lambda:print_help(d) # update
-
-    return d
 
 def update_entry_passwd(i):
     en = get_user_input('Input new entry name ('+entry_name[i]+')')
@@ -517,25 +496,29 @@ def do_yank(p):
     cp2_clipboard(p)
     return True
 
-def do_show(entry_idx, passwd_idx):
+def do_show(args):
     print_entries_singleline()
-    print_entry_detail(entry_idx, passwd_idx)
+    print_entry_detail(*args)
     return True
+
+# def do_show(entry_idx, passwd_idx):
+#     print_entries_singleline()
+#     print_entry_detail(entry_idx, passwd_idx)
+#     return True
 
 def extend_inner_inputs(i): # extend from scratch
     d = {}
     pl = entry_passwd[i]
     
-    d['?'] = ['Print this', lambda:print_help(d)]
-    d['m'] = ['Return to main menu', lambda:'return']
-    d['u'] = ['Update password info', lambda:update_entry_passwd(i)]
-    d['y'] = ['Yank newest password', lambda:do_yank(pl[-1])]
-    d['s'] = ['Show newest password', lambda:do_show(i, len(pl)-1)]
+    d['?'] = ['Print this', print_help, d]
+    d['m'] = ['Return to main menu', lambda x:'return', None]
+    d['u'] = ['Update password info', update_entry_passwd, i]
+    d['y'] = ['Yank newest password', do_yank, pl[-1]]
+    d['s'] = ['Show newest password', do_show, (i, len(pl)-1)]
     for k, p in enumerate(pl):
         s = str(k)
-        d['y'+s] = ['Yank '+s+'th password', lambda: not do_yank(p)]
-        d['s'+s] = ['Show '+s+'th password', lambda: not do_show(i, k)]
-        print(d)
+        d['y'+s] = ['Yank '+s+'th password', do_yank, p]
+        d['s'+s] = ['Show '+s+'th password', do_show, (i, k)]
 
     return d
 
@@ -551,9 +534,30 @@ def innner_loop(i):
             print_entries_singleline()
             print_entry_detail(i)
             continue
-        rv = dic[s][1]() # lambda execute...
+        rv = dic[s][1](dic[s][2])
         if rv == 'return': return None # TODO: (dirty)
 
+outter_inputs = { '?' : ['Print this', print_help, None],
+                  'ex': ['Export unencryted password info in base64', \
+                             do_export, None],
+                  'q' : ['Exit this script', die, None],
+                  'n' : ['Creat new entry', create_new_entry, None],
+                  'u' : ['Update main passwd', \
+                             prompt_update_main_passwd, None]
+                  }
+
+def extend_outter_inputs():
+    d = {}
+    for i, name in enumerate(entry_name):
+        d[str(i)] = ['Operate on entry \''+name+'\'', innner_loop, i]
+        d['d'+str(i)] = ['Remove entry \''+name+'\'', remove_entry, i]
+
+    for x in outter_inputs: # merge
+        d[x] = outter_inputs[x]
+    
+    d['?'][2] = d # update
+
+    return d
 
 def outter_loop():
     while True:
@@ -563,7 +567,7 @@ def outter_loop():
         if s not in dic:
             print('Invalid input \'', s , '\' ', sep='')
             continue
-        dic[s][1]()
+        dic[s][1](dic[s][2])
 
 
 def first_time_use():
@@ -603,12 +607,12 @@ if __name__ == '__main__':
 # Attention! Do not touch following lines, ciphertext lies here
 # START OF CIPHERTEXT
 #UW3lx+6dHcxdWY63nK5GJIfNk9iGuR7CebhCCXbQ5ByTpoFCRBxSb3cGFeVFs2KWH0LT
-#UK5IICiH4HXAZXLun7eVCZUWcNDN/xY8DmqbNmz/9IX6CISikfxhkrbDsvFWKB5n4IVi
-#f/wytmlKT+3JxPjJrxDkyopIF6zee4bq0sIbQJoR0nyZL397KcukZdXOPtRpjXAdFBP3
-#G7w6XmTZeeQ1YG12qFzqJ4KB92rwjqB5+XsfNZBC4h8tBMi3BuYZChfp07CuRFZfe6gy
-#0OVcGCXqWgm8IcyX+306N8zuakOvr59YjCJYXmgbZTutHRAW6Xgd7BKUHZUPiJ8F4YXG
-#F9hQM7RH+VpUBB7AxTHHZ4l/bf2G9h2un/3qA4CGUoo6QrfMMP3Ku9M1oghCRs1vWHU7
-#r0T/j5pkcpZ3KU0=
+#UK5IICiH4HXAZXLun7eVCZUWcNDN/xY8DmqbNmz/9IT8a5pF7UFiGc7Xy7JkwHC7DDJk
+#5L+vVYLCX0fLjWo/il7Qxs5I85icoUmsDFnuYbpd+G/vUEVu5bOQTbWfQsnwx3toI7IC
+#4XRnsUk99W/8L1DAve7e3HYs7MnlZj4C5xG3IpOXySKnLB3F67YHIXCgUEqDnTrDsMUL
+#MsJa/o+u7sSvq4qh8QapCKmT5HlIQ4OxwuOEQL0VVAVsOcAX+JAD+h4DCUf+Bl0wAwev
+#YaLHL1ju1rn21tRtOJFtDdUPS/zn7gxxWI1aTOTvyLKwRTXbAskQgTsr7mAGDs27zOQW
+#ljBHQBdLeKlEBdk=
 # END OF CIPHERTEXT
 
 # 
