@@ -1,6 +1,6 @@
 General Info
  - PasswdManager a command-line interactive python script to create & manage password.
- - PasswdManager heavily depends on Py3K (written as) and PyCrypto (AES encryption, SHA265 digest, random number) while slightly depends on XSel (to communicate with X's clipboard), so make sure you have first two installed before download and run this script.
+ - PasswdManager heavily depends on Py3K (written in) and PyCrypto (AES encryption, SHA265 digest, random number) while slightly depends on XSel (to communicate with X's clipboard), so make sure you have first two installed before download and run this script.
    - Py3K: http://www.python.org/getit/releases/3.0/
    - PyCrypto: https://www.dlitz.net/software/pycrypto/
    - XSel: http://www.kfish.org/software/xsel/
