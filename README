@@ -1,0 +1,118 @@
+General Info
+ - PasswdManager a command-line interactive python script to create & manage password.
+ - PasswdManager heavily depends on Py3K (written as) and PyCrypto (AES encryption, SHA265 digest, random number) while slightly depends on XSel (to communicate with X's clipboard), so make sure you have first two installed before download and run this script.
+   - Py3K: http://www.python.org/getit/releases/3.0/
+   - PyCrypto: https://www.dlitz.net/software/pycrypto/
+   - XSel: http://www.kfish.org/software/xsel/
+ - I just insert encrypted password infomation (cypertext) at the end of the script, so we can save the trouble of managing two closely coupled files everywhere.
+ 
+
+Screenshots
+= First use ==========================================================
+
+PasswdManager 1.0 (Python 3.1.3, Crypto 2.5, XSel 1.2.0)
+License under GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Author: lxd <i@lxd.me>, Input '?' for help
+
+No CipherText found, maybe it's your first time start this script or pretend to do so, anyway create your main pasword
+Input new main password >> 
+Again as uaual >> 
+
+======================================================================
+
+= Not first time use =================================================
+
+PasswdManager 1.0 (Python 3.1.3, Crypto 2.5, XSel 1.2.0)
+License under GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Author: lxd <i@lxd.me>, Input '?' for help
+
+Input main passwd: >> 
+
+Entries (main password updated 0:03:13 ago):
+0       github  username        0:02:38
+1       gmail   username        0:00:12
+
+ >> 
+
+======================================================================
+
+= Help ===============================================================
+
+ >> ?
+List of possible commands:
+
+l       Show logs
+n       Creat new entry
+q       Exit this script
+0       Operate on entry 'github'
+u       Update main passwd
+ex      Export unencryted password info in base64
+d0      Remove entry 'github'
+?       Print this
+
+
+Entries (main password updated 0:02:03 ago):
+0       github  username        0:01:28
+
+ >> 
+======================================================================
+
+= Create a entry =====================================================
+
+Entries (main password updated 0:00:00 ago):
+
+ >> n
+Creat a new entry, directly hit Enter to cancel
+Input entry name >> github
+Input username >> username
+Input passphrase >> aaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbb
+Input password length (default 15, min 3, max 127) >> 
+New entry github created
+
+Entries (main password updated 0:00:35 ago):
+0       github  username        0:00:00
+
+ >> 
+
+======================================================================
+
+= Look into entry 'github'============================================
+
+Entries (main password updated 0:05:42 ago):
+0       github  username        0:00:39
+1       gmail   username        0:02:41
+
+ >> 0
+
+Entries: 0.github  1.gmail  
+0 github username  [0]pA0...  [1],J:...  [2]dj2...  
+ >> 
+
+======================================================================
+
+= Help ===============================================================
+
+Entries: 0.github  1.gmail  
+0 github username  [0]pA0...  [1],J:...  [2]dj2...  
+ >> ?
+List of possible commands:
+
+s2      Show 2th password
+s1      Show 1th password
+s0      Show 0th password
+m       Return to main menu
+c1      Copy 1th password
+s       Show newest password
+u       Update password info
+c       Copy newest password
+c0      Copy 0th password
+c2      Copy 2th password
+?       Print this
+
+ >> 
+
+======================================================================

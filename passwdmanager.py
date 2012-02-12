@@ -3,9 +3,9 @@
 # passwdmanager.py --- 
 # 
 # Filename: passwdmanager.py
-# Description: Generate, keep, prompt to update password
-# Author: lxd
-# Maintainer: 
+# Description: Generate and keep password
+# Author: lxd <i@lxd.me>
+# Maintainer: lxd
 # Created: Wed Feb  1 15:46:06 2012 (+0800)
 # Version: 1.0
 # Last-Updated: 
@@ -13,7 +13,7 @@
 #     Update #: 0
 # URL: 
 # Keywords: 
-# Compatibility: Python 3.1
+# Compatibility: Python 3
 # 
 #
 
@@ -53,6 +53,7 @@
 
 import sys
 import os
+import re
 import platform
 import time
 import datetime
@@ -60,27 +61,25 @@ import math
 import getpass
 import binascii
 import subprocess
-import Crypto
+try:
+    import Crypto
+except ImportError:
+    print('No Installed PyCrypto found! ' \
+              '(https://www.dlitz.net/software/pycrypto)')
+    sys.exit(1)
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
+from Crypto.Random import random
 
-PROGRAM="PasswdManager"
-VERSION=1.0
-PYTHON_VERSION=sys.version[:5]
-CRYPTO_VERSION=Crypto.__version__
-LICENSE="""License under GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
-This is free software: you are free to change and redistribute it.
-There is NO WARRANTY, to the extent permitted by law."""
-AUTHOR="lxd <i@lxd.me>"
+CIPHERTEXT_WIDTH = 68
+START_OF_CIPHERTEXT = "# START OF CIPHERTEXT"
+END_OF_CIPHERTEXT = "# END OF CIPHERTEXT"
 
-CIPHERTEXT_WIDTH=68
-START_OF_CIPHERTEXT="# START OF CIPHERTEXT"
-END_OF_CIPHERTEXT="# END OF CIPHERTEXT"
-
-
+DEFAULT_PASSWD_LEN = 15
+MAX_PASSWD_LEN = 127
+MIN_PASSWD_LEN = 3
 
 # Data structure
-
 LISTS = [[] for x in range(9)]
 LOG_LEN = 5
 logged_user_host = LISTS[0]
@@ -95,28 +94,26 @@ entry_username = LISTS[6]
 entry_passwd = LISTS[7]
 entry_updated_timestamp = LISTS[8]
 
-DEFAULT_PASSWD_LEN = 15
-
-
-
-def print_lists(): print(LISTS)
-
 def now():
+    """Get current time in seconds since the Epoch"""
     return math.trunc(time.time())
 
 def update_logs():
-    if len(logged_user_host) >= LOG_LEN:    
+    """Update Log related lists, then save changes back to file"""
+    if len(logged_user_host) >= LOG_LEN:
         logged_user_host.pop(0)
         logged_timestamp.pop(0)
         passwd_altered.pop(0)
     
-    logged_user_host.append('{0}@{1}'.
-                            format(getpass.getuser(), platform.node()))
+    logged_user_host.append('%s@%s' % (getpass.getuser(), platform.node()))
     logged_timestamp.append(now())
     passwd_altered.append(False)
+    update_ciphertext() # save changes back to file
 
 def set_to_altered():
+    """Set IF-MODIFICATION-HAPPENED to True"""
     passwd_altered[len(passwd_altered)-1] = True
+    update_ciphertext()
 
 def update_main_passwd(p):
     if len(main_passwd) >= HISTORY_LEN:
@@ -133,7 +130,7 @@ def die(c=0):
 
 def get_user_input(msg='', f=input):
     try:
-        user_input = f(msg + '>> ')
+        user_input = f(msg + ' >> ')
     except (KeyboardInterrupt, EOFError):
         die()
     return user_input
@@ -142,6 +139,11 @@ def txt_parenthesized(t):
     if len(t) == 0:
         return False
     return t[0] == '(' and t[-1] == ')'
+
+def txt_quoted(t):
+    if len(t) == 0:
+        return False
+    return t[0] == '"' and t[-1] == '"'
 
 def type_convertible(s, t):
     try:
@@ -164,38 +166,59 @@ def literal_bool(s):
     else:
         return False
 
-def split_by_level1(s, sep):
-    """Split string by sep but escape sep within parenthesis"""
-    stack = []
+def split_but_escape_within(s, sep, escl):
+    """Split string by sep but escape sep within elemet in l.
+
+    `escl' is a sorted list with escape tuples in it
+      eg: [('"', '"'), ('(', ')')]
+    And a tuple can be escaped by ones before
+    """
+    stack = [[] for x in range(len(escl))]
+    skip = [False for x in range(len(escl))]
     l = []
     e = ''
-    skip = False
-    
-    for c in s:
-        if c == sep and not skip:
+
+    i = 0
+    while i < len(s):
+        if s[i:i+len(sep)] == sep and not True in skip:
             l.append(e)
             e = ''
+            i += len(sep)
             continue
-        if c == '(':
-            skip = True
-            stack.append('#')
-        elif c == ')':
-            if len(stack) == 1:
-                skip = False
-            stack.pop()
-        e += c
+        for k, t in enumerate(escl):
+            if True in skip[:k]: break 
+            if t[0] == t[1]:
+                if s[i:i+len(t[0])] == t[0]:
+                    if len(stack[k]) == 0:
+                        skip[k] = True
+                        stack[k].append('#')
+                    else:
+                        skip[k] = False
+                        stack[k].pop()
+            else:
+                if s[i:i+len(t[0])] == t[0]:
+                    skip[k] = True
+                    stack[k].append('#')
+                elif s[i:i+len(t[1])] == t[1]:
+                    if len(stack[k]) == 1:
+                        skip[k] = False
+                    stack[k].pop()
+        
+        e += s[i]
+        i += 1
 
     if e:
         l.append(e)
+        
     return l
-    
+
 def txt_2_list(t, l):
     """Convert list-formated string to real list"""
     if txt_parenthesized(t):
         t = t[1:-1]
     assert len(l) == 0
-    
-    l0 = split_by_level1(t, ',')
+
+    l0 = split_but_escape_within(t, ',', [('"', '"'), ('(', ')')])
     for e in l0:
         if txt_parenthesized(e):
             ll = []
@@ -204,13 +227,17 @@ def txt_2_list(t, l):
             l.append(int(e))
         elif literal_bool_convertible(e):
             l.append(literal_bool(e))
+        elif txt_quoted(e):
+            l.append(e[1:-1])
         else:
+            assert False
             l.append(e)
     return l
 
 def list_2_txt(l):
     if type(l) is not list:
-        return str(l)
+        if type(l) is str: return '\"' + str(l) + '\"'
+        else: return str(l)
     else:
         txt = '('
         for e in l:
@@ -229,8 +256,7 @@ def extract_txt(t):
 
     for tl, l in zip(tls, LISTS):
         txt_2_list('('+tl+')', l)
-
-
+    
 def calc_main_passwd(passwd_txt):
     obj = SHA256.new()
     obj.update(passwd_txt.encode())
@@ -242,7 +268,6 @@ def encrypt(txt, rawpasswd):
     aes = AES.new(k, AES.MODE_CFB)
     ct = aes.encrypt(txt.encode())
     return binascii.b2a_base64(ct).decode()[:-1] # remove trailing `\n'
-
 
 def decrypt(b64s, rawpasswd):
     k = calc_main_passwd(rawpasswd)
@@ -293,9 +318,8 @@ def unload_ciphertext(ct):
         f.write(post)
 
 def update_ciphertext():
-    assert len(main_passwd) > 0
+    if len(main_passwd) == 0: return None
     unload_ciphertext(encrypt(extract_lists(), main_passwd[-1]))
-    
 
 def prompt_update_main_passwd():
     passwd = get_user_input('Input new main password', getpass.getpass)
@@ -308,17 +332,13 @@ def prompt_update_main_passwd():
             prompt_update_main_passwd()
     else:
         update_main_passwd(passwd)
-        return True
-
-
-
+    return True
 
 def print_help(dic):
     print('List of possible commands:\n')
     for x in dic:
             print(x, dic[x][0], sep='\t')
     print()
-
 
 def print_entries_multilines():
     d = datetime.timedelta(seconds=(now()-updated_timestamp[-1])) #duration
@@ -329,7 +349,7 @@ def print_entries_multilines():
                                         entry_username,
                                         entry_updated_timestamp)):
         d = datetime.timedelta(seconds=(now()-ts[-1]))
-        print(str(i), n, un, str(d), sep='    ')
+        print(str(i), n, un, str(d), sep='\t')
     print()
 
 def print_entries_singleline():
@@ -339,20 +359,62 @@ def print_entries_singleline():
     print()
 
 def print_entry_detail(i, showidx=-1):
-    print(str(i)+'.', entry_name[i], entry_username[i], ' ', end='')
+    print(str(i), entry_name[i], entry_username[i], ' ', end='')
     l = entry_passwd[i]
     for i, p in enumerate(l):
         pp = p if i == showidx else p[:3]+'...'
-        print('[', str(i), ']', '.', pp, sep='', end='  ')
+        print('[', str(i), ']',pp, sep='', end='  ')
     print()
 
 def generate_passwd(pphrase, plen):
-    #TODO
+    rndfile = Crypto.Random.new()
+    rndbytes = rndfile.read(MAX_PASSWD_LEN) # Generate random bytes
+    
     sha = SHA256.new()
-    sha.update(pphrase.encode())
-    d = sha.digest()
-    return binascii.b2a_base64(d).decode()[:plen]#random []
-    #Password must contain at least one of letters, numbers, and symbols.
+    sha.update((pphrase+time.ctime(now())).encode())
+    digestbytes = sha.digest() # Generate passphrase's digest, bytes
+
+    bytes = rndbytes + digestbytes # Connect
+    b64s = binascii.b2a_base64(bytes).decode().rstrip('\n=') # bytes->base64
+
+    # Slice 'plen' bytes randomly
+    rndpos = random.choice(range(len(b64s)-plen+1))
+    rawpwd = binascii.b2a_base64(bytes).decode()[rndpos:rndpos+plen]
+
+    rawpwd = list(rawpwd) # str is immutable, convert to list
+
+    # This is 3 char classes
+    digit = '0123456789'
+    letter = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    symbol = ',.;:~!@#$%^&-+='
+    
+    is_digit = re.compile('[0-9]')
+    is_letter = re.compile('[a-z]', re.IGNORECASE) 
+    is_symbol = re.compile('[' + symbol + ']')
+
+    d = {}
+    d[digit] = []
+    d[letter] = []
+    d[symbol] = []
+
+    # How many in each class ?
+    for i, c in enumerate(rawpwd):
+        if is_letter.match(c): d[letter].append(i)
+        elif is_digit.match(c): d[digit].append(i)
+        elif is_symbol.match(c): d[symbol].append(i)
+    
+    sd = sorted(d.items(), key=lambda x:len(x[1])) # sorted_d, list
+
+    # Now balancing ...
+    while len(sd[2][1]) - len(sd[0][1]) > 1:
+        rndpos = random.choice(sd[2][1])
+        rawpwd[rndpos] = random.choice(sd[0][0])
+        sd[2][1].remove(rndpos)
+        sd[0][1].append(rndpos)
+        
+        sd = sorted(sd, key=lambda x:len(x[1]))
+    
+    return ''.join(rawpwd) # Done
 
 def do_export():
     while True:
@@ -379,6 +441,10 @@ def do_export():
     print('Done')
     return True
 
+def print_logs():
+    print('\nLogs:')
+    for uh, ts in zip(logged_user_host, logged_timestamp):
+        print(uh, time.ctime(ts), sep='\t')
 
 def create_new_entry():
     print('Creat a new entry, directly hit Enter to cancel')
@@ -392,11 +458,14 @@ def create_new_entry():
     pp = get_user_input('Input passphrase')
     if pp == '': return False
 
-    pls = get_user_input('Input password length (default%d)' %
-                        DEFAULT_PASSWD_LEN)
+    pls = get_user_input('Input password length (default %d, min %d, max %d)'
+                         % (DEFAULT_PASSWD_LEN, \
+                                MIN_PASSWD_LEN, \
+                                MAX_PASSWD_LEN) )
     if pls == '' or not int_convertible(pls):
         pl = DEFAULT_PASSWD_LEN
-    elif int_convertible(pls) and int(pls) <= 0:
+    elif int(pls) < MIN_PASSWD_LEN or int(pls) > MAX_PASSWD_LEN:
+        print('Invalid, set to default')
         pl = DEFAULT_PASSWD_LEN
     else:
         pl = int(pls)
@@ -407,11 +476,13 @@ def create_new_entry():
     entry_passwd.append([passwd])
     entry_updated_timestamp.append([now()])
 
+    set_to_altered()
     print('New entry %s created' % en)
     return True
 
 def remove_entry(i):
-    s = get_user_input('Are you sure to remove entry '+entry_name[i]+'?(Yn)')
+    s = get_user_input('Are you sure to remove entry \'' \
+                           + entry_name[i] + '\' (Y/n) ?')
     if s == 'Y' or s == 'y':
         entry_username.pop(i)
         entry_passwd.pop(i)
@@ -419,11 +490,11 @@ def remove_entry(i):
         name = entry_name.pop(i)
         
         print('Entry', name, 'removed')
+        set_to_altered()
         return True
     else:
         print('Abort')
         return False
-
 
 def update_entry_passwd(i):
     en = get_user_input('Input new entry name ('+entry_name[i]+')')
@@ -457,6 +528,7 @@ def update_entry_passwd(i):
     entry_passwd[i].append(passwd)
     entry_updated_timestamp[i].append(now())
 
+    set_to_altered()
     print('Done')
     
     print_entries_singleline()
@@ -464,7 +536,7 @@ def update_entry_passwd(i):
     
     return True
 
-# --Implementation of 'yank passwd to X's clipboard'
+# --Implementation of 'copy passwd to X's clipboard'
 def xsel_installed():
     program = 'xsel'
     for path in os.environ['PATH'].split(':'):
@@ -479,7 +551,7 @@ def get_xsel_version():
 
 def cp2_clipboard(s):
     if not xsel_installed():
-        print('Copied to clipboard failed, xsel not found.')
+        print('Copy to clipboard failed, xsel not found.')
         return None
     try:
         if type(s) is str:
@@ -492,7 +564,7 @@ def cp2_clipboard(s):
         print('Copied to clipboard failed.')
 # --
 
-def do_yank(p):
+def do_copy(p):
     cp2_clipboard(p)
     return True
 
@@ -501,27 +573,21 @@ def do_show(args):
     print_entry_detail(*args)
     return True
 
-# def do_show(entry_idx, passwd_idx):
-#     print_entries_singleline()
-#     print_entry_detail(entry_idx, passwd_idx)
-#     return True
-
 def extend_inner_inputs(i): # extend from scratch
     d = {}
     pl = entry_passwd[i]
     
     d['?'] = ['Print this', print_help, d]
-    d['m'] = ['Return to main menu', lambda x:'return', None]
+    d['m'] = ['Return to main menu', lambda: 'return', None]
     d['u'] = ['Update password info', update_entry_passwd, i]
-    d['y'] = ['Yank newest password', do_yank, pl[-1]]
+    d['c'] = ['Copy newest password', do_copy, pl[-1]]
     d['s'] = ['Show newest password', do_show, (i, len(pl)-1)]
     for k, p in enumerate(pl):
         s = str(k)
-        d['y'+s] = ['Yank '+s+'th password', do_yank, p]
+        d['c'+s] = ['Copy '+s+'th password', do_copy, p]
         d['s'+s] = ['Show '+s+'th password', do_show, (i, k)]
 
     return d
-
 
 def innner_loop(i):
     print_entries_singleline()
@@ -534,12 +600,14 @@ def innner_loop(i):
             print_entries_singleline()
             print_entry_detail(i)
             continue
-        rv = dic[s][1](dic[s][2])
+        arg = dic[s][2]
+        rv = dic[s][1](arg) if arg is not None else dic[s][1]()
         if rv == 'return': return None # TODO: (dirty)
 
 outter_inputs = { '?' : ['Print this', print_help, None],
                   'ex': ['Export unencryted password info in base64', \
                              do_export, None],
+                  'l' : ['Show logs', print_logs, None],
                   'q' : ['Exit this script', die, None],
                   'n' : ['Creat new entry', create_new_entry, None],
                   'u' : ['Update main passwd', \
@@ -567,8 +635,8 @@ def outter_loop():
         if s not in dic:
             print('Invalid input \'', s , '\' ', sep='')
             continue
-        dic[s][1](dic[s][2])
-
+        arg = dic[s][2]
+        dic[s][1](arg) if arg is not None else dic[s][1]()
 
 def first_time_use():
     print("No CipherText found, maybe it's your first time start this "\
@@ -591,13 +659,23 @@ def security_guard():
             decrypted = decrypt(ct, passwd)
         extract_txt(decrypted)
         update_logs()
-        
-    update_ciphertext()
+    
     outter_loop()
 
 
 if __name__ == '__main__':
+    PROGRAM="PasswdManager"
+    VERSION=1.0
+    PYTHON_VERSION=sys.version[:5]
+    CRYPTO_VERSION=Crypto.__version__
     XSEL_VERSION=get_xsel_version() if xsel_installed() else 'not installed'
+    LICENSE='License under GNU GPL version 3 ' \
+        '<http://gnu.org/licenses/gpl.html>\n' \
+        'This is free software: ' \
+        'you are free to change and redistribute it.\n' \
+        'There is NO WARRANTY, to the extent permitted by law.'
+    AUTHOR='lxd <i@lxd.me>'
+
     print("\n{} {} (Python {}, Crypto {}, XSel {})\n{}\nAuthor: {}, {}\n".
           format(PROGRAM, VERSION, PYTHON_VERSION, CRYPTO_VERSION,
                  XSEL_VERSION, LICENSE, AUTHOR, 'Input \'?\' for help'))
@@ -606,13 +684,6 @@ if __name__ == '__main__':
 
 # Attention! Do not touch following lines, ciphertext lies here
 # START OF CIPHERTEXT
-#UW3lx+6dHcxdWY63nK5GJIfNk9iGuR7CebhCCXbQ5ByTpoFCRBxSb3cGFeVFs2KWH0LT
-#UK5IICiH4HXAZXLun7eVCZUWcNDN/xY8DmqbNmz/9IT8a5pF7UFiGc7Xy7JkwHC7DDJk
-#5L+vVYLCX0fLjWo/il7Qxs5I85icoUmsDFnuYbpd+G/vUEVu5bOQTbWfQsnwx3toI7IC
-#4XRnsUk99W/8L1DAve7e3HYs7MnlZj4C5xG3IpOXySKnLB3F67YHIXCgUEqDnTrDsMUL
-#MsJa/o+u7sSvq4qh8QapCKmT5HlIQ4OxwuOEQL0VVAVsOcAX+JAD+h4DCUf+Bl0wAwev
-#YaLHL1ju1rn21tRtOJFtDdUPS/zn7gxxWI1aTOTvyLKwRTXbAskQgTsr7mAGDs27zOQW
-#ljBHQBdLeKlEBdk=
 # END OF CIPHERTEXT
 
 # 
