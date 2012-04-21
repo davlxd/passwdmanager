@@ -7,7 +7,7 @@
 # Author: lxd <i@lxd.me>
 # Maintainer: lxd
 # Created: Wed Feb  1 15:46:06 2012 (+0800)
-# Version: 1.0
+# Version: 1.1
 # Last-Updated: 
 #           By: 
 #     Update #: 0
@@ -327,11 +327,13 @@ def prompt_update_main_passwd():
     if passwd != passwd1:
         s = get_user_input('\nNot match, press \'c\' to cancel')
         if s == 'c' or s == 'C':
+            print('Canceled')
             return False
         else:
             prompt_update_main_passwd()
     else:
         update_main_passwd(passwd)
+    print('Done')
     return True
 
 def print_help(dic):
@@ -340,16 +342,42 @@ def print_help(dic):
             print(x, dic[x][0], sep='\t')
     print()
 
-def print_entries_multilines():
+def print_entries_multilines(cand_entries = []):
+    cand_names = []
+    cand_usrnames = []
+    cand_update_ts = []
+    
+    if len(cand_entries) == 0:
+        cand_entries = [i for i in range(len(entry_name))]
+        cand_names = entry_name
+        cand_usrnames = entry_username
+        cand_update_ts = entry_updated_timestamp
+    else:
+        for i in cand_entries:
+            cand_names.append(entry_name[i])
+            cand_usrnames.append(entry_username[i])
+            cand_update_ts.append(entry_updated_timestamp[i])
+    
     d = datetime.timedelta(seconds=(now()-updated_timestamp[-1])) #duration
     print('\nEntries (main password updated', str(d), 'ago):')
+
+    maxlen0 = maxlen1 = 0
+    for (n, un) in zip(cand_names, cand_usrnames):
+        if len(n) > maxlen0: maxlen0 = len(n)
+        if len(un) > maxlen1: maxlen1 = len(un)
+
+    def fmt(string, maxlen):
+        while len(string) < maxlen:
+            string += ' '
+        return string
     
     # Here is why I like python ...
-    for i, (n, un, ts) in enumerate(zip(entry_name,
-                                        entry_username,
-                                        entry_updated_timestamp)):
+    for (i, n, un, ts) in zip(cand_entries,
+                              cand_names,
+                              cand_usrnames,
+                              cand_update_ts):
         d = datetime.timedelta(seconds=(now()-ts[-1]))
-        print(str(i), n, un, str(d), sep='\t')
+        print(str(i), fmt(n,maxlen0), fmt(un,maxlen1), str(d), sep='\t')
     print()
 
 def print_entries_singleline():
@@ -478,7 +506,8 @@ def create_new_entry():
 
     set_to_altered()
     print('New entry %s created' % en)
-    return True
+    
+    innner_loop(len(entry_name)-1)
 
 def remove_entry(i):
     s = get_user_input('Are you sure to remove entry \'' \
@@ -552,7 +581,7 @@ def get_xsel_version():
 def cp2_clipboard(s):
     if not xsel_installed():
         print('Copy to clipboard failed, xsel not found.')
-        return None
+        return False
     try:
         if type(s) is str:
             b = s.encode()
@@ -560,13 +589,17 @@ def cp2_clipboard(s):
         p0.communicate(b)
         p1 = subprocess.Popen(['xsel', '--clipboard'], stdin=subprocess.PIPE)
         p1.communicate(b)
+        return True
     except OSError:
         print('Copied to clipboard failed.')
+        return False
 # --
 
 def do_copy(p):
-    cp2_clipboard(p)
-    return True
+    if cp2_clipboard(p):
+        get_user_input("## Password copied to clipboard, "\
+                       "press any key to clear it from clipboard ##")
+        cp2_clipboard('')
 
 def do_show(args):
     print_entries_singleline()
@@ -579,9 +612,11 @@ def extend_inner_inputs(i): # extend from scratch
     
     d['?'] = ['Print this', print_help, d]
     d['m'] = ['Return to main menu', lambda: 'return', None]
+    d['..'] = d['m']
     d['u'] = ['Update password info', update_entry_passwd, i]
     d['c'] = ['Copy newest password', do_copy, pl[-1]]
     d['s'] = ['Show newest password', do_show, (i, len(pl)-1)]
+    d['q'] = ['Exit this script', die, None]
     for k, p in enumerate(pl):
         s = str(k)
         d['c'+s] = ['Copy '+s+'th password', do_copy, p]
@@ -604,39 +639,49 @@ def innner_loop(i):
         rv = dic[s][1](arg) if arg is not None else dic[s][1]()
         if rv == 'return': return None # TODO: (dirty)
 
-outter_inputs = { '?' : ['Print this', print_help, None],
-                  'ex': ['Export unencryted password info in base64', \
-                             do_export, None],
-                  'l' : ['Show logs', print_logs, None],
-                  'q' : ['Exit this script', die, None],
-                  'n' : ['Creat new entry', create_new_entry, None],
-                  'u' : ['Update main passwd', \
-                             prompt_update_main_passwd, None]
-                  }
-
 def extend_outter_inputs():
     d = {}
+    
+    d['?'] = ['Print this', print_help, None]
+    d['ex'] = ['Export unencryted password info in base64',do_export, None]
+    d['l'] = ['Show logs', print_logs, None]
+    d['q'] = ['Exit this script', die, None]
+    d['n'] = ['Creat new entry', create_new_entry, None]
+    d['c'] = d['n']
+    d['u'] = ['Update main passwd', prompt_update_main_passwd, None]
+    
     for i, name in enumerate(entry_name):
         d[str(i)] = ['Operate on entry \''+name+'\'', innner_loop, i]
         d['d'+str(i)] = ['Remove entry \''+name+'\'', remove_entry, i]
-
-    for x in outter_inputs: # merge
-        d[x] = outter_inputs[x]
     
     d['?'][2] = d # update
 
     return d
 
+def match_on_name(s):
+    s = s.upper()
+    cand_entries = []
+    for i, n in enumerate(entry_name):
+        n = n.upper()
+        if n.startswith(s):
+            cand_entries.append(i)
+    return cand_entries
+        
 def outter_loop():
+    cand_entries = []
     while True:
-        print_entries_multilines()
+        print_entries_multilines(cand_entries)
         s = get_user_input()
         dic = extend_outter_inputs()
         if s not in dic:
-            print('Invalid input \'', s , '\' ', sep='')
-            continue
+            cand_entries = match_on_name(s)
+            if len(cand_entries) != 1:
+                continue
+            else:
+                s = str(cand_entries[0])
         arg = dic[s][2]
         dic[s][1](arg) if arg is not None else dic[s][1]()
+        cand_entries = []
 
 def first_time_use():
     print("No CipherText found, maybe it's your first time start this "\
