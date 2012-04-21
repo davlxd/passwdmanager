@@ -1,0 +1,15 @@
+1.1
+===
+	* Pause the script once user copy password to clipbord, wait to clear it 
+	  from clipboard
+
+	* Now users can terminate the script from innner loop
+
+	* Reformat print out strings in print_entries_multilines(), it looks 
+	  better now when the script print entries on mutiple lines
+
+	* Now users can select specifc entries by entering prefix of entry name, 
+	  all candidate entries will be printed out if multiple matches exist
+
+	* Now the script automatically select the newly created entry 
+
