@@ -7,7 +7,7 @@
 # Author: lxd <i@lxd.me>
 # Maintainer: lxd
 # Created: Wed Feb  1 15:46:06 2012 (+0800)
-# Version: 1.1
+# Version: 1.2
 # Last-Updated: 
 #           By: 
 #     Update #: 0
@@ -624,6 +624,19 @@ def extend_inner_inputs(i): # extend from scratch
 
     return d
 
+def swap_entry(i):
+    if i+1 == len(entry_name):
+        return
+    
+    def do_swap(l):
+        l.append(l.pop(i))
+        
+    do_swap(entry_name)
+    do_swap(entry_username)
+    do_swap(entry_passwd)
+    do_swap(entry_updated_timestamp)
+    
+
 def innner_loop(i):
     print_entries_singleline()
     print_entry_detail(i)
@@ -637,7 +650,8 @@ def innner_loop(i):
             continue
         arg = dic[s][2]
         rv = dic[s][1](arg) if arg is not None else dic[s][1]()
-        if rv == 'return': return None # TODO: (dirty)
+        if rv == 'return': break # TODO: (dirty)
+    swap_entry(i)
 
 def extend_outter_inputs():
     d = {}
@@ -710,7 +724,7 @@ def security_guard():
 
 if __name__ == '__main__':
     PROGRAM="PasswdManager"
-    VERSION=1.0
+    VERSION=1.2
     PYTHON_VERSION=sys.version[:5]
     CRYPTO_VERSION=Crypto.__version__
     XSEL_VERSION=get_xsel_version() if xsel_installed() else 'not installed'
