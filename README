@@ -1,118 +1,108 @@
 General Info
  - PasswdManager a command-line interactive python script to create & manage password.
- - PasswdManager heavily depends on Py3K (written in) and PyCrypto (AES encryption, SHA265 digest, random number) while slightly depends on XSel (to communicate with X's clipboard), so make sure you have first two installed before download and run this script.
-   - Py3K: http://www.python.org/getit/releases/3.0/
-   - PyCrypto: https://www.dlitz.net/software/pycrypto/
-   - XSel: http://www.kfish.org/software/xsel/
+ - The script has been tested with Ruby1.9 and 2.0, with older version cannot be guaranteed runnable.
  - I just insert encrypted password infomation (cypertext) at the end of the script, so we can save the trouble of managing two closely coupled files everywhere.
  
 
-Screenshots
+ 
+Screenshots:
+
 = First time use =====================================================
 
-PasswdManager 1.0 (Python 3.1.3, Crypto 2.5, XSel 1.2.0)
 License under GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
 This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.
-Author: lxd <i@lxd.me>, Input '?' for help
 
-No CipherText found, maybe it's your first time start this script or pretend to do so, anyway create your main pasword
-Input new main password >> 
-Again as uaual >> 
+ruby - Copyright (C) 1993-2013 Yukihiro Matsumoto
+ruby 2.0.0p0 (2013-02-24 revision 39474) [i686-linux]
+Author: lxd <i@lxd.me>
+
+No CipherText found, maybe it's your first time run this script or pretend to do so, anyway create your main pasword 
+Input new main passwd >> 
+Do it again as usual >> 
 
 ======================================================================
+
+
+
 
 = Not first time use =================================================
 
-PasswdManager 1.0 (Python 3.1.3, Crypto 2.5, XSel 1.2.0)
 License under GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
 This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.
-Author: lxd <i@lxd.me>, Input '?' for help
 
-Input main passwd: >> 
+ruby - Copyright (C) 1993-2013 Yukihiro Matsumoto
+ruby 2.0.0p0 (2013-02-24 revision 39474) [i686-linux]
+Author: lxd <i@lxd.me>
 
-Entries (main password updated 0:03:13 ago):
-0       github  username        0:02:38
-1       gmail   username        0:00:12
+Input main passwd >> 
 
- >> 
+    name                 uername              last modified time
+[0] github               username             2013-08-16 16:21:58 +0800
+[1] gmail                username             2013-08-16 16:22:05 +0800
+> 
 
 ======================================================================
+
+
+
 
 = Help ===============================================================
 
- >> ?
-List of possible commands:
+> ?
+? Print this
+pull	Request from remote server
+push	Push new password to remote server
+q	Quit
+um	Update main password
+n	Create new entry
+d	Delete a entry
+u	Update password
+c	Copy to clipboard
+s	Show passwd on terminal
 
-l       Show logs
-n       Creat new entry
-q       Exit this script
-0       Operate on entry 'github'
-u       Update main passwd
-ex      Export unencryted password info in base64
-d0      Remove entry 'github'
-?       Print this
+    name                 uername              last modified time
+[0] github               username             2013-08-16 16:21:58 +0800
+[1] gmail                username             2013-08-16 16:22:05 +0800
+> 
 
-
-Entries (main password updated 0:02:03 ago):
-0       github  username        0:01:28
-
- >> 
 ======================================================================
+
+
 
 = Create a entry =====================================================
 
-Entries (main password updated 0:00:00 ago):
+    name                 uername              last modified time
+[0] github               username             2013-08-16 16:21:58 +0800
+> n
 
- >> n
-Creat a new entry, directly hit Enter to cancel
-Input entry name >> github
-Input username >> username
-Input passphrase >> aaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbb
-Input password length (default 15, min 3, max 127) >> 
-New entry github created
+Create a new entry
+Entry name > gmail
+Username > username
+Password > 
+Passwd length (default 15) 
+Password combination (default 7): 
+  4 - digit - [0-9]
+  2 - charactar [a-zA-Z]
+  1 - special charactor [p]
+> 
 
-Entries (main password updated 0:00:35 ago):
-0       github  username        0:00:00
-
- >> 
-
-======================================================================
-
-= Look into entry 'github'============================================
-
-Entries (main password updated 0:05:42 ago):
-0       github  username        0:00:39
-1       gmail   username        0:02:41
-
- >> 0
-
-Entries: 0.github  1.gmail  
-0 github username  [0]pA0...  [1],J:...  [2]dj2...  
- >> 
+    name                 uername              last modified time
+[0] github               username             2013-08-16 16:21:58 +0800
+[1] gmail                username             2013-08-16 16:25:57 +0800
+> 
 
 ======================================================================
 
-= Help ===============================================================
 
-Entries: 0.github  1.gmail  
-0 github username  [0]pA0...  [1],J:...  [2]dj2...  
- >> ?
-List of possible commands:
 
-s2      Show 2th password
-s1      Show 1th password
-s0      Show 0th password
-m       Return to main menu
-c1      Copy 1th password
-s       Show newest password
-u       Update password info
-c       Copy newest password
-c0      Copy 0th password
-c2      Copy 2th password
-?       Print this
+= Copy password of 'github' to clipboard==============================
 
- >> 
+    name                 uername              last modified time
+[0] github               username             2013-08-16 16:21:58 +0800
+[1] gmail                username             2013-08-16 16:25:57 +0800
+> c 0
+# Press Any key to clear password from clipbord #
 
 ======================================================================
