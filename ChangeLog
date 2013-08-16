@@ -1,3 +1,7 @@
+2.0
+===
+	* Rewrite in Ruby
+
 1.2
 ===
 	* Push the most recently accessed entry to bottom
