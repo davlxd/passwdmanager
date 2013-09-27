@@ -1,5 +1,5 @@
 General Info
- - PasswdManager a command-line interactive python script to create & manage password.
+ - PasswdManager a command-line interactive ruby script to create & manage password.
  - The script has been tested with Ruby1.9 and 2.0, with older version cannot be guaranteed runnable.
  - I just insert encrypted password infomation (cypertext) at the end of the script, so we can save the trouble of managing two closely coupled files everywhere.
  
